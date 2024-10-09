@@ -3,8 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
-
-	// "os"
+	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -24,7 +23,8 @@ var db *gorm.DB
 
 func initDatabase() {
 	var err error
-	dsn := "host=localhost user=postgress dbname=file_upload password=leeladealwis@1111"
+	dsn := "host=localhost user=postgres dbname=file_upload sslmode=disable password=leeladealwis@1111"
+
 	db, err = gorm.Open("postgres", dsn)
 	if err != nil {
 		log.Fatal("Failed to connect to database")
@@ -44,14 +44,20 @@ func main() {
 	defer db.Close()
 
 	app.Post("/upload", uploadFile)
+	app.Get("/files/:id", getFile)
 
-	log.Fatal(app.Listen(":3000"))
+	log.Fatal(app.Listen(":8081"))
 }
 
 func uploadFile(c *fiber.Ctx) error {
 	file, err := c.FormFile("file")
 	if err != nil {
 		return err
+	}
+
+	// Ensure uploads directory exists
+	if _, err := os.Stat("./uploads"); os.IsNotExist(err) {
+		os.Mkdir("./uploads", os.ModePerm)
 	}
 
 	filePath := fmt.Sprintf("./uploads/%s", file.Filename)
@@ -67,5 +73,25 @@ func uploadFile(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"message": "File uploaded successfully",
+		"fileID":  newFile.ID,
 	})
+}
+
+func getFile(c *fiber.Ctx) error {
+	// Retrieve the file ID from the URL parameters
+	id := c.Params("id")
+
+	// Retrieve the file record from the database
+	var file File
+	if err := db.First(&file, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "File not found",
+		})
+	}
+
+	// Construct the file path
+	filePath := fmt.Sprintf("./uploads/%s", file.Filename)
+
+	// Serve the file
+	return c.SendFile(filePath)
 }
